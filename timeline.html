@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>历史地图</title>
+  <meta charset="UTF-8">
+  <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://unpkg.com/vis-timeline/standalone/umd/vis-timeline-graph2d.min.js"></script>
+  <link href="https://unpkg.com/vis-timeline/styles/vis-timeline-graph2d.min.css" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #fdfdfd;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 30px;
+      margin-top: 10px;
+      height: 60px; /* 固定高度防止跳动 */
+    box-sizing: border-box;
+    border-bottom: 1px solid #ccc;
+    }
+    .header-bar h2 {
+      margin: 0;
+      line-height: 60px; /* 垂直居中 */
+      font-size: 1.8em;
+      color: #2c3e50;
+    }
+    label {
+      font-size: 0.95em;
+      margin-right: 10px;
+    }
+    select, input[type="number"], input[type="text"] {
+      padding: 5px 8px;
+      font-size: 0.9em;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding: 10px;
+      gap: 10px;
+      border-top: 1px solid #ccc;
+      border-bottom: 1px solid #ccc;
+      margin: 10px 0;
+    background-color: #fafafa;
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    }
+    #suggestionList {
+      font-size: 0.9em;
+    }
+    #main {
+      display: block;
+    }
+    #map {
+      width: 100%;
+      height: 400px;
+      margin-bottom: 0;
+    }
+    #timeline-container {
+      width: 100%;
+      max-height: 350px; /* 设置最大高度限制 */
+      overflow-y: auto;
+      overflow-x: hidden;
+      border: 1px solid #ccc;
+      margin-bottom: 0;
+      position: relative;
+    }
+    #timeline {
+      min-height: 300px; /* 保证即使没有事件也显示一定高度 */
+    }
+    button, select, input {
+      margin-right: 10px;
+    }
+    #suggestionList li:hover {
+      background-color: #f0f0f0;
+    }
+
+    .lang-switch {
+      display: flex;
+      gap: 6px;
+      z-index: 1000;
+    }
+
+    .lang-switch button {
+      padding: 4px 10px;
+      font-size: 0.85em;
+      line-height: 1.5em;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      white-space: nowrap;
+      height: 32px;
+      min-width: 70px;
+      text-align: center;
+    }
+
+    .lang-switch button:hover {
+      background-color: #2980b9;
+    }
+
+ 
+  </style>
+  <script>
+    let currentLang = 'zh';
+
+    const i18n = {
+      zh: {
+        title: "历史地图",
+        regionFilter: "地区筛选",
+        periodFilter: "历史阶段",
+        yearStart: "起始年份",
+        yearEnd: "结束年份",
+        keywordSearch: "关键词搜索",
+        placeholder: "如:米开朗基罗",
+        periods: {
+          all: "全部",
+          古典时期: "古典时期（-500~500）",
+          中世纪: "中世纪（500~1400）",
+          文艺复兴: "文艺复兴（1400~1600）",
+          启蒙时代: "启蒙时代（1600~1800）",
+          近现代: "近现代（1800~至今）"
+        }
+      },
+      en: {
+        title: "Historical Map Timeline",
+        regionFilter: "Region",
+        periodFilter: "Period",
+        yearStart: "Start Year",
+        yearEnd: "End Year",
+        keywordSearch: "Keyword Search",
+        placeholder: "e.g., Michelangelo",
+        periods: {
+          all: "All",
+          古典时期: "Classical (-500~500)",
+          中世纪: "Middle Ages (500~1400)",
+          文艺复兴: "Renaissance (1400~1600)",
+          启蒙时代: "Enlightenment (1600~1800)",
+          近现代: "Modern (1800~present)"
+        }
+      }
+    };
+
+    function setLanguage(lang) {
+      // console.log("正在切换语言到:", lang);  // 调试输出语言切换
+      currentLang = lang;
+      const dict = i18n[lang];
+      document.querySelector('h2').textContent = dict.title;
+
+      const regionLabel = document.querySelector("label[for='regionFilter']");
+      if (regionLabel && regionLabel.firstChild) regionLabel.firstChild.textContent = dict.regionFilter + ": ";
+
+      const periodLabel = document.querySelector("label[for='periodFilter']");
+      if (periodLabel && periodLabel.firstChild) periodLabel.firstChild.textContent = dict.periodFilter + ": ";
+
+      const startLabel = document.querySelector("label[for='startYear']");
+      if (startLabel && startLabel.firstChild) startLabel.firstChild.textContent = dict.yearStart + ": ";
+
+      const endLabel = document.querySelector("label[for='endYear']");
+      if (endLabel && endLabel.firstChild) endLabel.firstChild.textContent = dict.yearEnd + ": ";
+
+      const keywordLabel = document.querySelector("label[for='keyword']");
+      if (keywordLabel && keywordLabel.firstChild) keywordLabel.firstChild.textContent = dict.keywordSearch + ": ";
+
+      document.getElementById("keyword").placeholder = dict.placeholder;
+
+      const periodSelect = document.getElementById("periodFilter");
+      Array.from(periodSelect.options).forEach(opt => {
+        const key = opt.value;
+        if (dict.periods[key]) opt.textContent = dict.periods[key];
+      });
+
+      // 更新地区筛选控件内容
+      updateRegionFilter(allData);
+
+      // 切换语言后更新关键词池
+      keywordPool = getAllKeywords(allData);
+
+      // console.log("语言切换完成，刷新数据...");
+      filterAll();  // 切换语言后，刷新内容
+    }
+
+    function keywordMatches(entry, keyword) {
+      const title = currentLang === 'en' ? entry.title_en : entry.title;
+      const description = currentLang === 'en' ? entry.description_en : entry.description;
+      return keyword === "" ||
+             (title && title.toLowerCase().includes(keyword)) ||
+             (description && description.toLowerCase().includes(keyword));
+    }
+
+    function filterAll() {
+      // console.log("正在刷新数据，当前语言:", currentLang);  // 调试输出当前语言
+      const region = document.getElementById("regionFilter").value;
+      const period = document.getElementById("periodFilter").value;
+      const periodRange = getPeriodRange(period);
+      const startYear = parseInt(document.getElementById("startYear").value);
+      const endYear = parseInt(document.getElementById("endYear").value);
+      const keyword = document.getElementById("keyword").value.trim().toLowerCase();
+
+      const filtered = allData.filter(e => {
+        const year = parseInt(e.date.substring(0, 4));
+        const matchRegion = region === "all" || e.region === region;
+        const matchTime = periodRange
+          ? year >= periodRange[0] && year <= periodRange[1]
+          : year >= startYear && year <= endYear;
+        const matchKeyword = keywordMatches(e, keyword);
+        return matchRegion && matchTime && matchKeyword;
+      });
+
+      // console.log("筛选结果：", filtered);  // 打印筛选后的数据
+
+      renderMap(filtered);  // 根据筛选后的数据重新渲染地图
+      renderTimeline(filtered);  // 根据筛选后的数据重新渲染时间轴
+    }
+
+    function renderMap(data) {
+      // console.log("渲染地图, 当前语言:", currentLang);  // 调试输出地图渲染时的语言
+      mapMarkers.forEach(m => map.removeLayer(m));
+      mapMarkers = [];
+      markerMap = {};  // 清空旧的标记
+      
+      data.forEach(event => {
+        const title = currentLang === 'en' ? event.title_en : event.title;
+        const description = currentLang === 'en' ? event.description_en : event.description;
+        // console.log("事件标题:", title, "描述:", description);  // 调试输出每个事件的标题和描述
+        
+        const imageHtml = event.image ? `<br><img src="${event.image}" style="max-width:200px;">` : "";
+        const marker = L.marker([parseFloat(event.lat), parseFloat(event.lng)])
+          .addTo(map)
+          .bindPopup(`<b>${title}</b><br>${event.date}<br>${description}${imageHtml}`);
+        mapMarkers.push(marker);
+        markerMap[event.id] = marker;
+      });
+    }
+
+    function renderTimeline(data) {
+      // console.log("渲染时间轴, 当前语言:", currentLang);  // 调试输出时间轴渲染时的语言
+      const items = data.map(event => {
+        const title = currentLang === 'en' ? event.title_en : event.title;
+        // console.log("事件标题:", title);  // 调试输出每个事件的标题
+        
+        return {
+          id: parseInt(event.id),
+          content: title,
+          start: event.date
+        };
+      });
+
+      const options = {
+        zoomMin: 1000 * 60 * 60 * 24 * 365 * 100,
+        zoomMax: 1000 * 60 * 60 * 24 * 365 * 200,
+        orientation: { axis: "both", item: "top" }
+      };
+
+      if (!timeline) {
+        timeline = new vis.Timeline(document.getElementById('timeline'), new vis.DataSet(items), options);
+        timeline.on("select", function (props) {
+          const selectedId = props.items[0];
+          const marker = markerMap[selectedId];
+          if (marker) {
+            marker.openPopup();
+            map.setView(marker.getLatLng(), 13); // 自动放大到缩放级别 13
+          }
+        });
+      } else {
+        timeline.setItems(items);
+      }
+    }
+
+    function zoomTimeline(direction) {
+      if (!timeline) return;
+      const range = timeline.getWindow();
+      const interval = range.end - range.start;
+      const factor = direction === 'in' ? 0.5 : 2;
+      const newInterval = interval * factor;
+      const middle = (range.start.valueOf() + range.end.valueOf()) / 2;
+      const newStart = middle - newInterval / 2;
+      const newEnd = middle + newInterval / 2;
+      timeline.setWindow(newStart, newEnd);
+    }
+
+    function getPeriodRange(period) {
+      switch (period) {
+        case "古典时期": return [-500, 500];
+        case "中世纪": return [500, 1400];
+        case "文艺复兴": return [1400, 1600];
+        case "启蒙时代": return [1600, 1800];
+        case "近现代": return [1800, 3000];
+        default: return null;
+      }
+    }
+
+  </script>
+</head>
+<body>
+  <div class="header-bar">
+    <h2>历史地图</h2>
+    <div class="lang-switch">
+      <button onclick="setLanguage('zh')">中文</button>
+      <button onclick="setLanguage('en')">English</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="map"></div>
+
+  <div id="controls">
+    <label for="regionFilter">地区筛选: 
+      <select id="regionFilter" onchange="filterAll()">
+        <option value="all">全部</option>
+      </select>
+    </label>
+
+    <label for="periodFilter">历史阶段: 
+      <select id="periodFilter" onchange="filterAll()">
+        <option value="all">全部</option>
+        <option value="古典时期">古典时期（-500~500）</option>
+        <option value="中世纪">中世纪（500~1400）</option>
+        <option value="文艺复兴">文艺复兴（1400~1600）</option>
+        <option value="启蒙时代">启蒙时代（1600~1800）</option>
+        <option value="近现代">近现代（1800~至今）</option>
+      </select>
+    </label>
+
+    <label for="startYear">起始年份: <input type="number" id="startYear" value="0" onchange="filterAll()"></label>
+    <label for="endYear">结束年份: <input type="number" id="endYear" value="2000" onchange="filterAll()"></label>
+
+    <label for="keyword" style="position: relative;">关键词搜索:
+      <input type="text" id="keyword" placeholder="如:米开朗基罗" oninput="showSuggestions(); filterAll()" onblur="hideSuggestions()">
+      <ul id="suggestionList" style="position:absolute; background:white; border:1px solid #ccc; list-style:none; padding:0; margin:0; z-index:1000; max-height:150px; overflow-y:auto; display:none; width:200px;"></ul>
+    </label>
+  </div>
+    <div id="timeline-container">
+      <div id="timeline"></div>
+    </div>
+  </div>
+
+
+  <script>
+    let firstLoad = true;
+    let timeline = null;
+    let allData = [];
+    let mapMarkers = [];
+    let markerMap = {}; // id -> marker
+    let markerClusterGroup = null;
+    let keywordPool = [];
+
+    var map = L.map('map').setView([50, 8], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const jsonUrl = "https://opensheet.elk.sh/1Q4-TufczUFkC0o-2xTMGaE5IW2y-Ft91u6G-h8uuSD8/1";
+
+    fetch(jsonUrl)
+      .then(res => res.json())
+      .then(data => {
+        console.log("成功读取数据", data);
+        allData = data;
+        keywordPool = getAllKeywords(data);
+        updateRegionFilter(data);
+        setLanguage(currentLang);
+        filterAll();
+      })
+      .catch(err => {
+        console.error("读取数据失败", err);
+        alert("无法加载历史数据，请检查链接或补全表格格式");
+      });
+
+    function getAllKeywords(data) {
+      const set = new Set();
+      data.forEach(e => {
+        const baseText = currentLang === 'en'
+          ? ((e.title_en || "") + " " + (e.description_en || ""))
+          : ((e.title || "") + " " + (e.description || ""));
+        const words = baseText.split(/[^\w\u4e00-\u9fa5]+/);
+        words.forEach(w => {
+          if (w.length >= 2) set.add(w.trim());
+        });
+      });
+      return Array.from(set);
+    }
+
+    function updateRegionFilter(data) {
+      const regionSet = new Set();
+  data.forEach(e => {
+    const region = currentLang === 'en' ? e.region_en : e.region;
+    if (region && region.trim()) {
+      regionSet.add(region.trim());
+    }
+  });
+      const regionSelect = document.getElementById("regionFilter");
+      regionSelect.innerHTML = ""; // 清空原有选项
+      const allOption = document.createElement("option");
+      allOption.value = "all";
+      allOption.textContent = currentLang === 'en' ? "All" : "全部";
+      regionSelect.appendChild(allOption);
+      regionSet.forEach(region => {
+        const option = document.createElement("option");
+        option.value = region;
+        option.textContent = region;
+        regionSelect.appendChild(option);
+      });
+    }
+
+    function showSuggestions() {
+      // 每次输入时根据当前语言更新关键词池
+      keywordPool = getAllKeywords(allData);
+      const input = document.getElementById("keyword");
+      const list = document.getElementById("suggestionList");
+      const text = input.value.toLowerCase();
+
+      if (!text) {
+        list.style.display = "none";
+        return;
+      }
+
+      const matches = keywordPool.filter(k => k.toLowerCase().includes(text)).slice(0, 10);
+      list.innerHTML = "";
+      matches.forEach(word => {
+        const item = document.createElement("li");
+        item.textContent = word;
+        item.style.padding = "4px 10px";
+        item.style.cursor = "pointer";
+        item.onmousedown = () => {
+          input.value = word;
+          list.style.display = "none";
+          filterAll();
+        };
+        list.appendChild(item);
+      });
+      list.style.display = matches.length ? "block" : "none";
+    }
+
+    function hideSuggestions() {
+      setTimeout(() => {
+        document.getElementById("suggestionList").style.display = "none";
+      }, 200);
+    }
+
+    function renderMap(data) {
+      // 使用 markerClusterGroup 聚合
+      if (markerClusterGroup) {
+        map.removeLayer(markerClusterGroup);
+      }
+      markerClusterGroup = L.markerClusterGroup({
+        maxClusterRadius: 20  // 默认是 80，设为更小值以降低聚合密度
+      });
+      mapMarkers.forEach(m => map.removeLayer(m));
+      mapMarkers = [];
+      markerMap = {}; // 清空旧的
+      data.forEach(event => {
+        const title = currentLang === 'en' ? event.title_en : event.title;
+        const description = currentLang === 'en' ? event.description_en : event.description;
+        const imageHtml = event.image ? `<br><img src="${event.image}" style="max-width:200px;">` : "";
+        const marker = L.marker([parseFloat(event.lat), parseFloat(event.lng)])
+          .bindPopup(`<b>${title}</b><br>${event.date}<br>${description}${imageHtml}`);
+        markerClusterGroup.addLayer(marker);
+        mapMarkers.push(marker);
+        markerMap[event.id] = marker;
+      });
+      map.addLayer(markerClusterGroup);
+    }
+
+    function renderTimeline(data) {
+      // console.log("渲染时间轴, 当前语言:", currentLang);  // 调试输出时间轴渲染时的语言
+      const items = data.map(event => {
+        const title = currentLang === 'en' ? event.title_en : event.title;
+        // console.log("事件标题:", title);  // 调试输出每个事件的标题
+        
+        return {
+          id: parseInt(event.id),
+          content: title,
+          start: event.date
+        };
+      });
+
+      const options = {
+        zoomMin: 1000 * 60 * 60 * 24 * 365 * 100,
+        zoomMax: 1000 * 60 * 60 * 24 * 365 * 200,
+        orientation: { axis: "both", item: "top" },
+        stack: true,
+        zoomable: true,
+        zoomKey: ''
+      };
+
+      if (!timeline) {
+        timeline = new vis.Timeline(document.getElementById('timeline'), new vis.DataSet(items), options);
+        timeline.on("select", function (props) {
+          const selectedId = props.items[0];
+          const marker = markerMap[selectedId];
+          if (marker) {
+            marker.openPopup();
+            map.setView(marker.getLatLng(), 7); // 自动放大到缩放级别 7
+          }
+        });
+      } else {
+        timeline.setItems(items);
+      }
+    }
+
+    function zoomTimeline(direction) {
+      if (!timeline) return;
+      const range = timeline.getWindow();
+      const interval = range.end - range.start;
+      const factor = direction === 'in' ? 0.5 : 2;
+      const newInterval = interval * factor;
+      const middle = (range.start.valueOf() + range.end.valueOf()) / 2;
+      const newStart = middle - newInterval / 2;
+      const newEnd = middle + newInterval / 2;
+      timeline.setWindow(newStart, newEnd);
+    }
+
+    function getPeriodRange(period) {
+      switch (period) {
+        case "古典时期": return [-500, 500];
+        case "中世纪": return [500, 1400];
+        case "文艺复兴": return [1400, 1600];
+        case "启蒙时代": return [1600, 1800];
+        case "近现代": return [1800, 3000];
+        default: return null;
+      }
+    }
+
+  </script>
+</body>
+</html>
